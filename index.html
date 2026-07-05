@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magical Flower Bouquet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ffe5ec, #f0e6ff, #e8f4f8);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            color: #8a70a4;
+            font-size: 14px;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 8px 16px;
+            border-radius: 20px;
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            backdrop-filter: blur(5px);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- <div class="instructions">🌸 Move your mouse to blow the seeds | Click to drop magic sparkles 🌸</div> -->
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Color Palette
+        const colors = {
+            pink: ['#ffb7d5', '#ff85b3', '#ff5c9d', '#ff3385'],
+            purple: ['#e1bee7', '#ce93d8', '#b39ddb', '#9575cd'],
+            blue: ['#e0f7fa', '#b2ebf2', '#80deea', '#4dd0e1'],
+            white: '#ffffff',
+            yellow: '#fff59d',
+            green: '#c8e6c9'
+        };
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let stars = [];
+        let seeds = [];
+        let clicks = [];
+        let mouse = { x: null, y: null, vx: 0, vy: 0, lastX: null, lastY: null };
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // Track mouse and calculate velocity for "wind"
+        window.addEventListener('mousemove', (e) => {
+            if (mouse.lastX !== null) {
+                mouse.vx = (e.clientX - mouse.lastX) * 0.1;
+                mouse.vy = (e.clientY - mouse.lastY) * 0.1;
+            }
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.lastX = e.clientX;
+            mouse.lastY = e.clientY;
+        });
+
+        window.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+            mouse.vx = 0;
+            mouse.vy = 0;
+        });
+
+        window.addEventListener('click', (e) => {
+            for (let i = 0; i < 15; i++) {
+                clicks.push(new ClickSparkle(e.clientX, e.clientY));
+            }
+        });
+
+        // --- PARTICLE CLASSES ---
+
+        class Star {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * height; // Distribute initially
+            }
+            reset() {
+                this.x = Math.random() * width;
+                this.y = -20;
+                this.size = Math.random() * 6 + 4;
+                this.speedY = Math.random() * 1 + 0.5;
+                this.speedX = Math.random() * 0.4 - 0.2;
+                this.color = [...colors.pink, ...colors.purple, ...colors.blue, '#ffffff'][Math.floor(Math.random() * 13)];
+                this.angle = Math.random() * Math.PI * 2;
+                this.spin = Math.random() * 0.02 - 0.01;
+                this.opacity = Math.random() * 0.5 + 0.5;
+            }
+            update() {
+                this.y += this.speedY;
+                this.x += this.speedX + mouse.vx * 0.3;
+                this.angle += this.spin;
+
+                // Wrap around edges
+                if (this.x < -20) this.x = width + 20;
+                if (this.x > width + 20) this.x = -20;
+
+                if (this.y > height + 20) {
+                    this.reset();
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+                
+                // Draw a cute 4-pointed cartoon star
+                ctx.beginPath();
+                for (let i = 0; i < 4; i++) {
+                    ctx.lineTo(0, -this.size);
+                    ctx.rotate(Math.PI / 4);
+                    ctx.lineTo(0, -this.size * 0.3);
+                    ctx.rotate(Math.PI / 4);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class DandelionSeed {
+            constructor() {
+                this.reset();
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+            }
+            reset() {
+                this.x = Math.random() * -200; // Start off screen left mostly
+                this.y = Math.random() * (height * 0.8);
+                this.size = Math.random() * 8 + 6;
+                this.speedY = Math.random() * 0.3 - 0.15;
+                this.speedX = Math.random() * 0.8 + 0.4;
+                this.wobble = Math.random() * Math.PI;
+                this.wobbleSpeed = Math.random() * 0.03 + 0.01;
+            }
+            update() {
+                this.wobble += this.wobbleSpeed;
+                this.x += this.speedX + Math.sin(this.wobble) * 0.2 + mouse.vx * 0.5;
+                this.y += this.speedY + mouse.vy * 0.5;
+
+                if (this.x > width + 50 || this.y > height + 50 || this.y < -50) {
+                    this.reset();
+                    this.x = -20;
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(Math.sin(this.wobble) * 0.2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 1;
+
+                // Seed Stem
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, this.size);
+                ctx.stroke();
+
+                // Fluff spikes
+                ctx.beginPath();
+                for(let i = 0; i < 7; i++) {
+                    let angle = (i / 6) * Math.PI - Math.PI; // semi-circle at top
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(Math.cos(angle) * (this.size * 0.7), Math.sin(angle) * (this.size * 0.7));
+                }
+                ctx.stroke();
+
+                // Little seed head dot
+                ctx.fillStyle = colors.purple[1];
+                ctx.beginPath();
+                ctx.arc(0, this.size, 1.5, 0, Math.PI*2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class ClickSparkle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 4 + 3;
+                this.speedX = Math.random() * 4 - 2;
+                this.speedY = Math.random() * -4 - 1;
+                this.gravity = 0.1;
+                this.color = [...colors.pink, ...colors.blue, colors.yellow][Math.floor(Math.random() * 9)];
+                this.alpha = 1;
+                this.decay = Math.random() * 0.02 + 0.015;
+            }
+            update() {
+                this.x += this.speedX;
+                this.speedY += this.gravity;
+                this.y += this.speedY;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- ARTWORK DRAWING FUNCTIONS (BOUQUET) ---
+
+        function drawLily(x, y, size) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // 6 Petals
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = colors.pink[0];
+
+            for (let i = 0; i < 6; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                // Draw pointy cartoon petals
+                ctx.quadraticCurveTo(-size*0.4, -size*0.6, 0, -size);
+                ctx.quadraticCurveTo(size*0.4, -size*0.6, 0, 0);
+                ctx.fill();
+                ctx.rotate(Math.PI / 3);
+            }
+            ctx.shadowBlur = 0;
+
+            // Lily Center Pink Blushes
+            ctx.fillStyle = colors.pink[0];
+            for (let i = 0; i < 6; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(-size*0.1, -size*0.3, 0, -size*0.5);
+                ctx.quadraticCurveTo(size*0.1, -size*0.3, 0, 0);
+                ctx.fill();
+                ctx.rotate(Math.PI / 3);
+            }
+
+            // Stamens
+            ctx.strokeStyle = colors.yellow;
+            ctx.lineWidth = 2;
+            ctx.fillStyle = colors.pink[2];
+            for(let i = 0; i < 6; i++) {
+                ctx.rotate(Math.PI / 3);
+                ctx.beginPath();
+                ctx.moveTo(0,0);
+                ctx.lineTo(0, -size*0.4);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, -size*0.4, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function drawRose(x, y, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Base shadow ring
+            ctx.fillStyle = colors.pink[2];
+            ctx.beginPath();
+            ctx.arc(0, 0, size, 0, Math.PI*2);
+            ctx.fill();
+
+            // Layered Outer Petals
+            ctx.fillStyle = colors.pink[1];
+            for(let i=0; i<5; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.cos(i*1.2)*size*0.4, Math.sin(i*1.2)*size*0.4, size*0.6, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Mid Petals
+            ctx.fillStyle = colors.pink[0];
+            for(let i=0; i<5; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.cos(i*1.2 + 0.6)*size*0.25, Math.sin(i*1.2 + 0.6)*size*0.25, size*0.4, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Rose Center Swirl
+            ctx.strokeStyle = colors.pink[3];
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 3; a += 0.1) {
+                let r = (size * 0.2) * (1 - a / (Math.PI * 4));
+                let sx = Math.cos(a) * r;
+                let sy = Math.sin(a) * r;
+                if (a === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawGrassFlower(x, y, size, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.fillStyle = color;
+            
+            // Simple 5-petal starburst flower
+            for(let i=0; i<5; i++) {
+                ctx.beginPath();
+                ctx.ellipse(0, -size*0.5, size*0.3, size*0.5, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.rotate((Math.PI * 2) / 5);
+            }
+            
+            // Center Dot
+            ctx.fillStyle = colors.yellow;
+            ctx.beginPath();
+            ctx.arc(0, 0, size*0.25, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBouquet() {
+            let bx = width / 2;
+            let by = height - 120; // Anchor point near bottom center
+
+            // 1. Stems and Greenery Base
+            ctx.strokeStyle = 'rgba(165, 214, 167, 0.8)';
+            ctx.lineWidth = 6;
+            for(let i = -4; i <= 4; i++) {
+                ctx.beginPath();
+                ctx.moveTo(bx + i*8, by + 130);
+                ctx.quadraticCurveTo(bx + i*3, by + 50, bx + i*25, by - 30);
+                ctx.stroke();
+            }
+
+            // Leaves
+            ctx.fillStyle = '#a5d6a7';
+            for(let i = 0; i < 8; i++) {
+                ctx.save();
+                ctx.translate(bx + Math.sin(i)*80, by - 20 + Math.cos(i)*40);
+                ctx.rotate(i);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 15, 30, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 2. Wrap/Paper Cone Background (Light Blue/Purple Pastel)
+            ctx.fillStyle = '#e1f5fe';
+            ctx.beginPath();
+            ctx.moveTo(bx, by + 120);
+            ctx.lineTo(bx - 130, by - 50);
+            ctx.lineTo(bx + 130, by - 50);
+            ctx.closePath();
+            ctx.fill();
+
+            // Decorative mesh overlay on wrap
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 3. Small Grass Flowers (Background Layer)
+            drawGrassFlower(bx - 90, by - 60, 14, colors.blue[2]);
+            drawGrassFlower(bx + 90, by - 60, 15, colors.purple[1]);
+            drawGrassFlower(bx - 40, by - 110, 12, colors.blue[1]);
+            drawGrassFlower(bx + 50, by - 120, 14, colors.pink[0]);
+            drawGrassFlower(bx - 100, by - 10, 16, colors.purple[0]);
+            drawGrassFlower(bx + 100, by - 10, 15, colors.blue[2]);
+
+            // 4. Main Flowers (Roses & Lilies arranged dynamically)
+            drawLily(bx - 50, by - 40, 65);
+            drawLily(bx + 50, by - 40, 75);
+            drawLily(bx, by - 100, 60);
+
+            drawRose(bx, by - 30, 35);
+            drawRose(bx - 75, by - 80, 30);
+            drawRose(bx + 75, by - 80, 32);
+            drawRose(bx - 15, by - 70, 28);
+            drawRose(bx + 25, by - 70, 28);
+
+            drawLily(bx + 50, by - 90, 30);
+            drawLily(bx - 40, by - 100, 30);
+
+            // 5. Foreground Grass Flowers tucked in front
+            drawGrassFlower(bx - 20, by - 10, 12, colors.blue[1]);
+            drawGrassFlower(bx + 30, by - 15, 15, colors.purple[1]);
+            drawGrassFlower(bx - 60, by - 5, 11, colors.white);
+            drawGrassFlower(bx + 60, by, 13, colors.blue[1]);
+
+            // 6. Huge Ribbon Bow tying it together
+            ctx.save();
+            ctx.translate(bx, by + 50);
+            ctx.fillStyle = '#b39ddb'; // Pastel purple bow
+
+            // Left loop
+            ctx.beginPath();
+            ctx.bezierCurveTo(0, 0, -60, -40, -50, 20);
+            ctx.bezierCurveTo(-50, 20, -30, 30, 0, 0);
+            ctx.fill();
+            
+            // Right loop
+            ctx.beginPath();
+            ctx.bezierCurveTo(0, 0, 60, -40, 50, 20);
+            ctx.bezierCurveTo(50, 20, 30, 30, 0, 0);
+            ctx.fill();
+
+            // Ribbon Tails
+            ctx.strokeStyle = '#b39ddb';
+            ctx.lineWidth = 14;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-10, 10);
+            ctx.quadraticCurveTo(-40, 50, -50, 80);
+            ctx.moveTo(10, 10);
+            ctx.quadraticCurveTo(40, 50, 50, 80);
+            ctx.stroke();
+
+            // Center Knot
+            ctx.fillStyle = '#ce93d8';
+            ctx.beginPath();
+            ctx.arc(0, 5, 12, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- INIT & LOOP ---
+
+        function init() {
+            stars = [];
+            seeds = [];
+            // Spawn initial counts matching screen space
+            let starCount = Math.floor((width * height) / 9000);
+            let seedCount = Math.floor(width / 40);
+
+            for(let i=0; i<starCount; i++) stars.push(new Star());
+            for(let i=0; i<seedCount; i++) seeds.push(new DandelionSeed());
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Slowly dampen mouse velocity wind
+            mouse.vx *= 0.95;
+            mouse.vy *= 0.95;
+
+            // Update & Draw Background Particles
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            seeds.forEach(seed => {
+                seed.update();
+                seed.draw();
+            });
+
+            // Update & Draw Click Spawns
+            clicks.forEach((sparkle, index) => {
+                sparkle.update();
+                sparkle.draw();
+                if(sparkle.alpha <= 0) {
+                    clicks.splice(index, 1);
+                }
+            });
+
+            // Draw the interactive floating Bouquet in center foreground
+            // Added subtle bouncing animation floating rhythm
+            let hoverOffset = Math.sin(Date.now() * 0.002) * 5;
+            ctx.save();
+            ctx.translate(0, hoverOffset);
+            drawBouquet();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
